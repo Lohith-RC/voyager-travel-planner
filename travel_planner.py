@@ -1,6 +1,8 @@
 import os
+import re
 import json
 import random
+import hashlib
 import pandas as pd
 import streamlit as st
 from groq import Groq
@@ -9,6 +11,8 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 from io import BytesIO
 from datetime import datetime
+from urllib.parse import quote
+from xml.sax.saxutils import escape
 
 # ---------------- CONFIG ----------------
 st.set_page_config(
@@ -47,33 +51,74 @@ def save_memory(from_location, destination, interests, dates, budget):
         json.dump(memory, f, indent=4)
 
 # ---------------- MOCK DATA ----------------
-def search_flights(from_location, destination):
-    return random.choice([
-        {"Airline": "IndiGo", "Price (₹)": 4500, "Duration": "2h 15m", "Stops": "Non-stop"},
-        {"Airline": "Air India", "Price (₹)": 5500, "Duration": "2h 30m", "Stops": "Non-stop"},
-        {"Airline": "Vistara", "Price (₹)": 6200, "Duration": "2h 45m", "Stops": "1 Stop"},
-    ])
+FLIGHT_OPTIONS = [
+    {"Airline": "IndiGo", "Base Price": 4500, "Duration": "2h 15m", "Stops": "Non-stop"},
+    {"Airline": "Air India", "Base Price": 5500, "Duration": "2h 30m", "Stops": "Non-stop"},
+    {"Airline": "Vistara", "Base Price": 6200, "Duration": "2h 45m", "Stops": "1 Stop"},
+    {"Airline": "Akasa Air", "Base Price": 4100, "Duration": "2h 20m", "Stops": "Non-stop"},
+    {"Airline": "SpiceJet", "Base Price": 3800, "Duration": "2h 55m", "Stops": "1 Stop"},
+]
 
-def search_hotels(days):
-    per_day = random.randint(1800, 3000)
-    return {
-        "Hotel Name": "Grand Palace Hotel",
-        "Rating": "4.2",
-        "Price/Day (₹)": per_day,
-        "Total Cost (₹)": per_day * days,
-    }
+HOTEL_OPTIONS = [
+    {"Hotel Name": "Budget Nest Inn", "Stars": 3.6, "Base Price/Day": 1800, "Area": "Near Airport"},
+    {"Hotel Name": "Grand Palace Hotel", "Stars": 4.2, "Base Price/Day": 3200, "Area": "City Center"},
+    {"Hotel Name": "Tranquil Boutique Stay", "Stars": 4.5, "Base Price/Day": 4200, "Area": "Old Town"},
+    {"Hotel Name": "Riverside Resort", "Stars": 4.7, "Base Price/Day": 5200, "Area": "Lakeside"},
+]
+
+ATTRACTION_DB = {
+    "nature": [("Lake View Point", "🌿"), ("National Park", "🌳"), ("Botanical Garden", "🌸")],
+    "food": [("Food Street", "🍜"), ("Cafe Tour", "☕"), ("Local Restaurant", "🍽")],
+    "history": [("Heritage Museum", "🏛"), ("Ancient Fort", "🏰"), ("Old Temple", "🛕")],
+    "adventure": [("Hill Trekking", "⛰️"), ("White-water Boating", "🚣"), ("Adventure Park", "🎢")],
+}
+
+
+def _seed_for(from_location, destination):
+    key = f"{from_location.strip().lower()}->{destination.strip().lower()}"
+    return int(hashlib.md5(key.encode()).hexdigest(), 16) % (2 ** 32)
+
+
+def search_flights(from_location, destination):
+    rng = random.Random(_seed_for(from_location, destination))
+    flights = []
+    for template in FLIGHT_OPTIONS:
+        price = max(template["Base Price"] + rng.randint(-700, 1400), 1500)
+        flights.append({**template, "Price (₹)": price})
+    flights.sort(key=lambda f: f["Price (₹)"])
+    return flights
+
+
+def search_hotels(from_location, destination, days):
+    rng = random.Random(_seed_for(from_location, destination) + 7)
+    hotels = []
+    for template in HOTEL_OPTIONS:
+        per_day = max(template["Base Price/Day"] + rng.randint(-400, 400), 900)
+        hotels.append({
+            "Hotel Name": template["Hotel Name"],
+            "Rating": f"{template['Stars']:.1f}",
+            "Area": template["Area"],
+            "Price/Day (₹)": per_day,
+            "Total Cost (₹)": per_day * days,
+        })
+    hotels.sort(key=lambda h: h["Total Cost (₹)"])
+    return hotels
+
 
 def search_attractions(interests):
-    db = {
-        "nature": ["Lake View", "National Park", "Botanical Garden"],
-        "food": ["Food Street", "Cafe Tour", "Local Restaurant"],
-        "history": ["Museum", "Fort", "Temple"],
-        "adventure": ["Trekking", "Boating", "Adventure Park"],
-    }
-    attractions = []
-    for i in interests:
-        attractions.extend(db.get(i.lower(), []))
-    return attractions if attractions else ["City Walk", "Local Market"]
+    results = []
+    seen = set()
+    for interest in interests:
+        for name, icon in ATTRACTION_DB.get(interest.lower(), []):
+            if name not in seen:
+                seen.add(name)
+                results.append({"name": name, "icon": icon, "category": interest})
+    if not results:
+        results = [
+            {"name": "City Walk", "icon": "📍", "category": "general"},
+            {"name": "Local Market", "icon": "🛍", "category": "general"},
+        ]
+    return results
 
 # ---------------- AI ITINERARY ----------------
 def generate_itinerary(from_location, destination, start_date, end_date, interests):
@@ -116,6 +161,14 @@ def calculate_total_cost(flight_cost, hotel_cost, days):
     return flight_cost + hotel_cost + food_cost + transport_cost
 
 # ---------------- PDF ----------------
+def _strip_markdown(text):
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+    text = re.sub(r"__(.+?)__", r"\1", text)
+    text = re.sub(r"`(.+?)`", r"\1", text)
+    text = re.sub(r"(?<!\*)\*(?!\s)(.+?)(?<!\s)\*(?!\*)", r"\1", text)
+    return text.strip()
+
+
 def create_pdf(from_location, destination, total_cost, itinerary, flight, hotel, days):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer)
@@ -124,19 +177,30 @@ def create_pdf(from_location, destination, total_cost, itinerary, flight, hotel,
 
     content.append(Paragraph("Voyager — Travel Itinerary", styles["Title"]))
     content.append(Spacer(1, 10))
-    content.append(Paragraph(f"<b>Route:</b> {from_location} → {destination}", styles["Normal"]))
+    content.append(Paragraph(f"<b>Route:</b> {escape(from_location)} → {escape(destination)}", styles["Normal"]))
     content.append(Paragraph(f"<b>Duration:</b> {days} days", styles["Normal"]))
     content.append(Paragraph(f"<b>Estimated Cost:</b> ₹{total_cost:,}", styles["Normal"]))
     content.append(Spacer(1, 10))
-    content.append(Paragraph("<b>Flight:</b> {} — ₹{}".format(flight['Airline'], flight['Price (₹)']), styles["Normal"]))
-    content.append(Paragraph("<b>Hotel:</b> {} — ₹{:,}".format(hotel['Hotel Name'], hotel['Total Cost (₹)']), styles["Normal"]))
+    content.append(Paragraph("<b>Flight:</b> {} — ₹{}".format(escape(flight['Airline']), flight['Price (₹)']), styles["Normal"]))
+    content.append(Paragraph("<b>Hotel:</b> {} — ₹{:,}".format(escape(hotel['Hotel Name']), hotel['Total Cost (₹)']), styles["Normal"]))
     content.append(Spacer(1, 15))
     content.append(Paragraph("<b>Itinerary</b>", styles["Heading2"]))
     content.append(Spacer(1, 5))
 
     for line in itinerary.split("\n"):
-        if line.strip():
-            content.append(Paragraph(line, styles["Normal"]))
+        stripped = line.strip()
+        if not stripped:
+            content.append(Spacer(1, 6))
+            continue
+        if stripped.startswith("#"):
+            heading = _strip_markdown(stripped.lstrip("#").strip())
+            content.append(Spacer(1, 8))
+            content.append(Paragraph(escape(heading), styles["Heading2"]))
+        elif re.match(r"^[-*]\s+", stripped):
+            bullet = _strip_markdown(re.sub(r"^[-*]\s+", "", stripped))
+            content.append(Paragraph(f"• {escape(bullet)}", styles["Normal"]))
+        else:
+            content.append(Paragraph(escape(_strip_markdown(stripped)), styles["Normal"]))
 
     doc.build(content)
     buffer.seek(0)
@@ -585,185 +649,221 @@ with st.sidebar:
 # ---------------- OUTPUT ----------------
 if submit:
     if not from_location or not destination:
+        st.session_state.pop("results", None)
+        st.session_state.chat_destination = ""
         st.error("Please enter both locations to continue.")
     elif start_date > end_date:
+        st.session_state.pop("results", None)
+        st.session_state.chat_destination = ""
         st.error("End date must be after start date.")
     else:
         with st.spinner("Planning your trip..."):
             days = (end_date - start_date).days + 1
-            flight = search_flights(from_location, destination)
-            hotel = search_hotels(days)
-            attractions = search_attractions(interests)
-            itinerary = generate_itinerary(
-                from_location, destination,
-                str(start_date), str(end_date), interests
-            )
-            total_cost = calculate_total_cost(
-                flight["Price (₹)"], hotel["Total Cost (₹)"], days
-            )
-
+            st.session_state.results = {
+                "from": from_location,
+                "destination": destination,
+                "days": days,
+                "interests": interests,
+                "budget": budget,
+                "flights": search_flights(from_location, destination),
+                "hotels": search_hotels(from_location, destination, days),
+                "attractions": search_attractions(interests),
+                "itinerary": generate_itinerary(
+                    from_location, destination, str(start_date), str(end_date), interests
+                ),
+            }
         save_memory(from_location, destination, interests,
-                     f"{start_date} — {end_date}", budget)
+                    f"{start_date} — {end_date}", budget)
 
-        # Trip summary header
-        st.markdown(f"""
-        <div style="
-            background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-tertiary) 100%);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 28px 32px;
-            margin-bottom: 24px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            flex-wrap: wrap;
-            gap: 16px;
-        ">
-            <div>
-                <div style="color: var(--text-muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;">Trip Route</div>
-                <div style="font-size: 1.5rem; font-weight: 700; letter-spacing: -0.01em;">
-                    {from_location}
-                    <span style="color: var(--accent); margin: 0 10px;">→</span>
-                    {destination}
+# ---------------- RESULTS ----------------
+results = st.session_state.get("results")
+
+if results:
+    from_location = results["from"]
+    destination = results["destination"]
+    days = results["days"]
+    budget = results["budget"]
+    attractions = results["attractions"]
+    itinerary = results["itinerary"]
+    flights = results["flights"]
+    hotels = results["hotels"]
+
+    # Flight & hotel selection
+    st.markdown("<div class='voyager-section-title'>Choose your flight &amp; stay</div>", unsafe_allow_html=True)
+    _sc1, _sc2 = st.columns(2)
+    with _sc1:
+        flight_idx = st.selectbox(
+            "✈ Flight",
+            options=range(len(flights)),
+            format_func=lambda i: f"{flights[i]['Airline']} · {flights[i]['Duration']} · {flights[i]['Stops']} · ₹{flights[i]['Price (₹)']:,}",
+        )
+    with _sc2:
+        hotel_idx = st.selectbox(
+            "🏨 Hotel",
+            options=range(len(hotels)),
+            format_func=lambda i: f"{hotels[i]['Hotel Name']} · ⭐{hotels[i]['Rating']} · ₹{hotels[i]['Price/Day (₹)']:,}/night",
+        )
+    flight = flights[flight_idx]
+    hotel = hotels[hotel_idx]
+    total_cost = calculate_total_cost(flight["Price (₹)"], hotel["Total Cost (₹)"], days)
+
+    # Trip summary header
+    st.markdown(f"""
+    <div style="
+        background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-tertiary) 100%);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 28px 32px;
+        margin-bottom: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 16px;
+    ">
+        <div>
+            <div style="color: var(--text-muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;">Trip Route</div>
+            <div style="font-size: 1.5rem; font-weight: 700; letter-spacing: -0.01em;">
+                {from_location}
+                <span style="color: var(--accent); margin: 0 10px;">→</span>
+                {destination}
+            </div>
+        </div>
+        <div style="display: flex; gap: 24px; align-items: center;">
+            <div style="text-align: center;">
+                <div style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;">Duration</div>
+                <div style="font-family: 'JetBrains Mono', monospace; font-size: 1.1rem; font-weight: 600;">{days}d</div>
+            </div>
+            <div style="width: 1px; height: 32px; background: var(--border);"></div>
+            <div style="text-align: center;">
+                <div style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;">Budget</div>
+                <div style="font-family: 'JetBrains Mono', monospace; font-size: 1.1rem; font-weight: 600; color: {'var(--success)' if total_cost <= budget else 'var(--error)'};">
+                    ₹{total_cost:,}
                 </div>
             </div>
-            <div style="display: flex; gap: 24px; align-items: center;">
-                <div style="text-align: center;">
-                    <div style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;">Duration</div>
-                    <div style="font-family: 'JetBrains Mono', monospace; font-size: 1.1rem; font-weight: 600;">{days}d</div>
-                </div>
-                <div style="width: 1px; height: 32px; background: var(--border);"></div>
-                <div style="text-align: center;">
-                    <div style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;">Budget</div>
-                    <div style="font-family: 'JetBrains Mono', monospace; font-size: 1.1rem; font-weight: 600; color: {'var(--success)' if total_cost <= budget else 'var(--error)'};">
-                        ₹{total_cost:,}
-                    </div>
-                </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Budget progress
+    if budget > 0:
+        pct = min((total_cost / budget) * 100, 100)
+        color = "var(--success)" if pct <= 80 else "var(--warning)" if pct <= 100 else "var(--error)"
+        st.markdown(f"""
+        <div style="margin-top: -12px; margin-bottom: 24px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                <span style="color: var(--text-muted); font-size: 0.78rem;">Budget usage</span>
+                <span style="color: {color}; font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; font-weight: 500;">{pct:.0f}%</span>
+            </div>
+            <div class="voyager-cost-bar">
+                <div class="voyager-cost-fill" style="width: {pct}%; background: {color};"></div>
             </div>
         </div>
         """, unsafe_allow_html=True)
 
-        # Budget progress
-        if budget > 0:
-            pct = min((total_cost / budget) * 100, 100)
-            color = "var(--success)" if pct <= 80 else "var(--warning)" if pct <= 100 else "var(--error)"
+    # Tabs
+    tab1, tab2, tab3 = st.tabs(["Overview", "Attractions", "Itinerary"])
+
+    with tab1:
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric("✈ Flight", f"{flight['Airline']}", f"₹{flight['Price (₹)']:,}")
             st.markdown(f"""
-            <div style="margin-top: -12px; margin-bottom: 24px;">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-                    <span style="color: var(--text-muted); font-size: 0.78rem;">Budget usage</span>
-                    <span style="color: {color}; font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; font-weight: 500;">{pct:.0f}%</span>
-                </div>
-                <div class="voyager-cost-bar">
-                    <div class="voyager-cost-fill" style="width: {pct}%; background: {color};"></div>
+            <div style="display: flex; gap: 8px; margin-top: -8px;">
+                <span class="voyager-tag">{flight.get('Duration', '2h 15m')}</span>
+                <span class="voyager-tag">{flight.get('Stops', 'Non-stop')}</span>
+            </div>
+            """, unsafe_allow_html=True)
+        with c2:
+            st.metric("🏨 Hotel", hotel['Hotel Name'], f"₹{hotel['Total Cost (₹)']:,} total")
+            st.markdown(f"""
+            <div style="display: flex; gap: 8px; margin-top: -8px;">
+                <span class="voyager-tag">⭐ {hotel.get('Rating', '4.2')}</span>
+                <span class="voyager-tag">₹{hotel['Price/Day (₹)']:,}/night</span>
+                <span class="voyager-tag">📍 {hotel.get('Area', 'Central')}</span>
+            </div>
+            """, unsafe_allow_html=True)
+        with c3:
+            st.metric("💰 Total Cost", f"₹{total_cost:,}", f"{days} days")
+            st.markdown(f"""
+            <div style="display: flex; gap: 8px; margin-top: -8px;">
+                <span class="voyager-tag">Food ₹{days * 800:,}</span>
+                <span class="voyager-tag">Transport ₹{days * 500:,}</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+    with tab2:
+        st.markdown(f"""
+        <div style="margin-bottom: 16px;">
+            <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 4px;">Places to visit</h3>
+            <p style="color: var(--text-muted); font-size: 0.85rem;">Curated based on your interests</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        for place in attractions:
+            st.markdown(f"""
+            <div class="voyager-attraction-item">
+                <div class="voyager-attraction-icon">{place['icon']}</div>
+                <div>
+                    <div style="font-weight: 500; font-size: 0.95rem;">{place['name']}</div>
+                    <div style="color: var(--text-muted); font-size: 0.78rem; text-transform: capitalize;">{place['category']}</div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
 
-        # Tabs
-        tab1, tab2, tab3 = st.tabs(["Overview", "Attractions", "Itinerary"])
+    with tab3:
+        st.markdown(f"""
+        <div style="margin-bottom: 16px;">
+            <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 4px;">Your itinerary</h3>
+            <p style="color: var(--text-muted); font-size: 0.85rem;">Day-by-day plan for {destination}</p>
+        </div>
+        """, unsafe_allow_html=True)
+        st.markdown(itinerary)
 
-        with tab1:
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                st.metric("✈ Flight", f"{flight['Airline']}", f"₹{flight['Price (₹)']:,}")
-                st.markdown(f"""
-                <div style="display: flex; gap: 8px; margin-top: -8px;">
-                    <span class="voyager-tag">{flight.get('Duration', '2h 15m')}</span>
-                    <span class="voyager-tag">{flight.get('Stops', 'Non-stop')}</span>
-                </div>
-                """, unsafe_allow_html=True)
-            with c2:
-                st.metric("🏨 Hotel", hotel['Hotel Name'], f"₹{hotel['Total Cost (₹)']:,} total")
-                st.markdown(f"""
-                <div style="display: flex; gap: 8px; margin-top: -8px;">
-                    <span class="voyager-tag">⭐ {hotel.get('Rating', '4.2')}</span>
-                    <span class="voyager-tag">₹{hotel['Price/Day (₹)']:,}/night</span>
-                </div>
-                """, unsafe_allow_html=True)
-            with c3:
-                st.metric("💰 Total Cost", f"₹{total_cost:,}", f"{days} days")
-                st.markdown(f"""
-                <div style="display: flex; gap: 8px; margin-top: -8px;">
-                    <span class="voyager-tag">Food ₹{days * 800:,}</span>
-                    <span class="voyager-tag">Transport ₹{days * 500:,}</span>
-                </div>
-                """, unsafe_allow_html=True)
+    # Action buttons
+    st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
 
-        with tab2:
-            st.markdown(f"""
-            <div style="margin-bottom: 16px;">
-                <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 4px;">Places to visit</h3>
-                <p style="color: var(--text-muted); font-size: 0.85rem;">Curated based on your interests</p>
-            </div>
-            """, unsafe_allow_html=True)
+    pdf = create_pdf(from_location, destination, total_cost, itinerary, flight, hotel, days)
+    msg = f"Trip: {from_location} -> {destination} | {days} days | ₹{total_cost:,}"
+    share_url = f"https://wa.me/?text={quote(msg)}"
 
-            icons = {"nature": "🌿", "food": "🍜", "history": "🏛", "adventure": "⛰️"}
-            for place in attractions:
-                icon = "📍"
-                for cat, cat_icon in icons.items():
-                    if cat in place.lower() or any(c in place.lower() for c in ["park", "garden", "lake", "food", "cafe", "restaurant", "museum", "fort", "temple", "trek", "boat"]):
-                        icon = cat_icon
-                        break
-                st.markdown(f"""
-                <div class="voyager-attraction-item">
-                    <div class="voyager-attraction-icon">{icon}</div>
-                    <div>
-                        <div style="font-weight: 500; font-size: 0.95rem;">{place}</div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
+    b1, b2, b3 = st.columns(3)
+    with b1:
+        st.markdown(f"""
+        <a href="{share_url}" target="_blank" style="
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px 0;
+            background: transparent;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.9rem;
+            transition: all 0.2s ease;
+            width: 100%;
+            box-sizing: border-box;
+        ">📱 Share</a>
+        """, unsafe_allow_html=True)
+    with b2:
+        st.download_button(
+            "⬇ Download PDF",
+            data=pdf,
+            file_name=f"voyager_trip_{destination}.pdf",
+            mime="application/pdf",
+            use_container_width=True
+        )
+    with b3:
+        if st.button("↻ New Trip", use_container_width=True):
+            st.session_state.pop("results", None)
+            st.session_state.chat_history = []
+            st.session_state.chat_destination = ""
+            st.rerun()
 
-        with tab3:
-            st.markdown(f"""
-            <div style="margin-bottom: 16px;">
-                <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 4px;">Your itinerary</h3>
-                <p style="color: var(--text-muted); font-size: 0.85rem;">Day-by-day plan for {destination}</p>
-            </div>
-            """, unsafe_allow_html=True)
-            st.markdown(itinerary)
-
-        # Action buttons
-        st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
-
-        pdf = create_pdf(from_location, destination, total_cost, itinerary, flight, hotel, days)
-        msg = f"Trip: {from_location} → {destination} | {days} days | ₹{total_cost:,}"
-
-        b1, b2, b3 = st.columns(3)
-        with b1:
-            st.markdown(f"""
-            <a href="https://wa.me/?text={msg}" target="_blank" style="
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                gap: 8px;
-                padding: 12px 0;
-                background: transparent;
-                border: 1px solid var(--border);
-                border-radius: 10px;
-                color: var(--text-secondary);
-                text-decoration: none;
-                font-weight: 500;
-                font-size: 0.9rem;
-                transition: all 0.2s ease;
-                width: 100%;
-                box-sizing: border-box;
-            ">📱 Share</a>
-            """, unsafe_allow_html=True)
-        with b2:
-            st.download_button(
-                "⬇ Download PDF",
-                data=pdf,
-                file_name=f"voyager_trip_{destination}.pdf",
-                mime="application/pdf",
-                use_container_width=True
-            )
-        with b3:
-            if st.button("↻ New Trip", use_container_width=True):
-                st.session_state.chat_history = []
-                st.session_state.chat_destination = ""
-                st.rerun()
-
-        st.session_state.chat_destination = destination
+    st.session_state.chat_destination = destination
 
 # ---------------- CHATBOT ----------------
 if st.session_state.get("chat_destination"):
@@ -829,7 +929,7 @@ if st.session_state.get("chat_destination"):
             st.write(reply)
 
 # ---------------- EMPTY STATE ----------------
-if not submit and not st.session_state.get("chat_destination"):
+if not results and not submit:
     st.markdown("""
     <div class="voyager-empty-state">
         <div class="voyager-empty-icon">✦</div>
