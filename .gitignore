@@ -1,0 +1,10 @@
+venv/
+.env
+travel_memory.json
+__pycache__/
+*.pyc
+*.pyo
+.streamlit/secrets.toml
+*.pdf
+.vscode/
+.idea/
