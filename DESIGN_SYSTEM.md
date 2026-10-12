@@ -79,6 +79,16 @@ The redesign transforms the default Streamlit travel planner into **Voyager** �
 - Standard Streamlit chat bubbles inside
 - Rounded corners on all messages
 
+### Weather Hero & Forecast Cards
+- Hero banner with current temperature in JetBrains Mono (`2rem`), condition, wind speed, and AI travel advisory
+- 5-day forecast grid with responsive cards, micro-elevation hover effect, max/min temperature, and weather emojis
+
+### Interactive Map & Legend
+- Pydeck 3D Dark-mode map integrated directly into Streamlit
+- ScatterplotLayer + TextLayer with custom dark tooltip
+- Color-coded pins: Gold (Destination Center), Purple/Accent (Chosen Hotel), Emerald (Recommended Attractions)
+- Map legend bar with colored dots and clear labeling
+
 ### Empty State
 - Centered layout with dashed border
 - Large icon + descriptive text
@@ -90,6 +100,7 @@ The redesign transforms the default Streamlit travel planner into **Voyager** �
 |---------|-----------|----------|
 | Buttons | background-color, box-shadow, transform | 200ms ease |
 | Metric cards | border-color, box-shadow | 200ms ease |
+| Weather cards | transform translateY(-2px), border-color, box-shadow | 200ms ease |
 | Tabs | background-color, color | 200ms ease |
 | Attraction items | border-color, background | 200ms ease |
 | Text inputs | border-color, box-shadow | 200ms ease |
@@ -101,15 +112,16 @@ The redesign transforms the default Streamlit travel planner into **Voyager** �
 - Max-width container: 1200px
 - Sidebar: dedicated form area with vertical spacing
 - Main content: full-width with consistent padding
-- Tabs: horizontal, evenly distributed
-- Metric grid: 3-column equal-width
+- Tabs: horizontal, evenly distributed (Overview, Map, Weather, Attractions, Itinerary)
+- Metric grid: 4-column equal-width (Flight, Hotel, Climate, Total Cost)
 - Action buttons: 3-column equal-width
 
 ## Key Design Decisions
 
-1. **No emojis in primary UI elements** — Replaced `🌍 Smart Travel Planner` with clean text badge `✦ Voyager Travel`
-2. **Monospace for prices** — JetBrains Mono ensures numeric alignment
-3. **Color-coded budget** — Instant visual feedback on budget status
+1. **No emojis in primary UI elements** — Clean text badge `✦ Voyager Travel`
+2. **Monospace for prices & temperatures** — JetBrains Mono ensures numeric alignment
+3. **Color-coded budget & pins** — Instant visual feedback on costs and map landmarks
 4. **Card-based information** — Every data point lives in a defined container
-5. **Empty state by default** — Guides users when no trip is planned
-6. **Sidebar form improvements** — Date inputs side-by-side, placeholder text, better spacing
+5. **Real-time Context** — Live weather & 3D dark map give instant spatial and climate awareness
+6. **Empty state by default** — Guides users when no trip is planned
+7. **Sidebar form improvements** — Date inputs side-by-side, placeholder text, better spacing

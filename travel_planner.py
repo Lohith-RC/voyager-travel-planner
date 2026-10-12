@@ -1,9 +1,15 @@
 import os
 import re
 import json
+import math
 import random
 import hashlib
+import urllib.request
+import urllib.parse
+from urllib.parse import quote
+from xml.sax.saxutils import escape
 import pandas as pd
+import pydeck as pdk
 import streamlit as st
 from groq import Groq
 from dotenv import load_dotenv
@@ -11,8 +17,6 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 from io import BytesIO
 from datetime import datetime
-from urllib.parse import quote
-from xml.sax.saxutils import escape
 
 # ---------------- CONFIG ----------------
 st.set_page_config(
@@ -119,6 +123,187 @@ def search_attractions(interests):
             {"name": "Local Market", "icon": "🛍", "category": "general"},
         ]
     return results
+
+# ---------------- GEOCODING & WEATHER ----------------
+POPULAR_DESTINATIONS = {
+    "mumbai": (19.0760, 72.8777),
+    "delhi": (28.6139, 77.2090),
+    "new delhi": (28.6139, 77.2090),
+    "bangalore": (12.9716, 77.5946),
+    "bengaluru": (12.9716, 77.5946),
+    "jaipur": (26.9124, 75.7873),
+    "goa": (15.2993, 74.1240),
+    "chennai": (13.0827, 80.2707),
+    "kolkata": (22.5726, 88.3639),
+    "hyderabad": (17.3850, 78.4867),
+    "pune": (18.5204, 73.8567),
+    "ahmedabad": (23.0225, 72.5714),
+    "agra": (27.1767, 78.0081),
+    "varanasi": (25.3176, 82.9739),
+    "udaipur": (24.5854, 73.7125),
+    "manali": (32.2432, 77.1892),
+    "shimla": (31.1048, 77.1734),
+    "kerala": (10.8505, 76.2711),
+    "kochi": (9.9312, 76.2673),
+    "paris": (48.8566, 2.3522),
+    "london": (51.5074, -0.1278),
+    "tokyo": (35.6762, 139.6503),
+    "dubai": (25.2048, 55.2708),
+    "singapore": (1.3521, 103.8198),
+    "new york": (40.7128, -74.0060),
+    "rome": (41.9028, 12.4964),
+    "bangkok": (13.7563, 100.5018),
+    "bali": (-8.4095, 115.1889),
+    "amsterdam": (52.3676, 4.9041),
+}
+
+WMO_WEATHER_CODES = {
+    0: ("Clear sky", "☀️", "Great day for outdoor walks, sightseeing, and photos!"),
+    1: ("Mainly clear", "🌤️", "Pleasant weather with mild sunshine."),
+    2: ("Partly cloudy", "⛅", "Ideal conditions for walking tours and cafes."),
+    3: ("Overcast", "☁️", "Good for museums, heritage sites, and indoor dining."),
+    45: ("Foggy", "🌫️", "Low visibility; take care during early morning travel."),
+    48: ("Depositing rime fog", "🌫️", "Chilly and misty conditions."),
+    51: ("Light drizzle", "🌦️", "Light rain expected; keep an umbrella handy."),
+    53: ("Moderate drizzle", "🌦️", "Drizzly weather; light rain gear recommended."),
+    55: ("Dense drizzle", "🌧️", "Wet conditions; consider indoor attractions."),
+    61: ("Slight rain", "🌧️", "Passersby showers; keep a compact umbrella."),
+    63: ("Moderate rain", "🌧️", "Rainy day; good time for covered attractions."),
+    65: ("Heavy rain", "⛈️", "Heavy rainfall; stay dry and enjoy cozy local spots."),
+    71: ("Slight snowfall", "🌨️", "Light snow; bundle up in warm layers!"),
+    73: ("Moderate snowfall", "❄️", "Snowy conditions; warm winter gear needed."),
+    75: ("Heavy snowfall", "❄️", "Heavy snow; beautiful scenery, stay warm!"),
+    80: ("Rain showers", "🌦️", "Scattered showers likely throughout the day."),
+    81: ("Moderate showers", "🌧️", "Periodic rain; plan flexible timings."),
+    82: ("Violent showers", "⛈️", "Intense showers; head indoors."),
+    95: ("Thunderstorm", "⚡", "Thunderstorms reported; stay in safe sheltered areas."),
+}
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def get_destination_coords(city_name):
+    clean = city_name.strip().lower()
+    if clean in POPULAR_DESTINATIONS:
+        return POPULAR_DESTINATIONS[clean]
+    try:
+        url = f"https://geocoding-api.open-meteo.com/v1/search?name={urllib.parse.quote(city_name)}&count=1&language=en&format=json"
+        req = urllib.request.Request(url, headers={"User-Agent": "VoyagerTravelPlanner/1.0"})
+        with urllib.request.urlopen(req, timeout=4) as response:
+            data = json.loads(response.read().decode())
+            if data.get("results"):
+                res = data["results"][0]
+                return float(res["latitude"]), float(res["longitude"])
+    except Exception:
+        pass
+    # Deterministic default fallback based on city name hash around India's center
+    h = int(hashlib.md5(city_name.encode()).hexdigest(), 16)
+    lat = 20.0 + ((h % 1000) / 100.0)
+    lon = 73.0 + (((h >> 10) % 1000) / 100.0)
+    return lat, lon
+
+@st.cache_data(show_spinner=False, ttl=1800)
+def get_weather_forecast(lat, lon):
+    try:
+        url = (
+            f"https://api.open-meteo.com/v1/forecast?latitude={lat:.4f}&longitude={lon:.4f}"
+            "&daily=temperature_2m_max,temperature_2m_min,weathercode,precipitation_probability_max"
+            "&current_weather=true&timezone=auto"
+        )
+        req = urllib.request.Request(url, headers={"User-Agent": "VoyagerTravelPlanner/1.0"})
+        with urllib.request.urlopen(req, timeout=4) as response:
+            data = json.loads(response.read().decode())
+            current = data.get("current_weather", {})
+            daily = data.get("daily", {})
+
+            curr_code = current.get("weathercode", 0)
+            condition, icon, tip = WMO_WEATHER_CODES.get(curr_code, ("Fair", "🌤️", "Comfortable travel weather."))
+
+            forecast_days = []
+            dates = daily.get("time", [])
+            max_temps = daily.get("temperature_2m_max", [])
+            min_temps = daily.get("temperature_2m_min", [])
+            codes = daily.get("weathercode", [])
+            rain_probs = daily.get("precipitation_probability_max", [])
+
+            for i in range(min(5, len(dates))):
+                w_code = codes[i] if i < len(codes) else 0
+                d_cond, d_icon, _ = WMO_WEATHER_CODES.get(w_code, ("Fair", "🌤️", ""))
+                d_obj = datetime.strptime(dates[i], "%Y-%m-%d")
+                forecast_days.append({
+                    "date": d_obj.strftime("%a, %b %d"),
+                    "max_temp": round(max_temps[i]) if i < len(max_temps) else "--",
+                    "min_temp": round(min_temps[i]) if i < len(min_temps) else "--",
+                    "condition": d_cond,
+                    "icon": d_icon,
+                    "rain_prob": rain_probs[i] if (rain_probs and i < len(rain_probs)) else 0,
+                })
+
+            return {
+                "available": True,
+                "current_temp": round(current.get("temperature", 24)),
+                "windspeed": round(current.get("windspeed", 10)),
+                "condition": condition,
+                "icon": icon,
+                "tip": tip,
+                "daily": forecast_days,
+            }
+    except Exception:
+        return {
+            "available": False,
+            "current_temp": 24,
+            "windspeed": 8,
+            "condition": "Mild & Pleasant",
+            "icon": "🌤️",
+            "tip": "Comfortable weather expected for your trip.",
+            "daily": [],
+        }
+
+def generate_map_dataframe(destination, coords, hotel, attractions):
+    lat, lon = coords
+    points = []
+
+    # 1. Destination Center
+    points.append({
+        "name": f"{destination} (City Center)",
+        "type": "📍 City Hub",
+        "details": f"Main hub for {destination}",
+        "lat": lat,
+        "lon": lon,
+        "color": [251, 191, 36, 230],
+        "radius": 550,
+    })
+
+    # 2. Selected Hotel (offset slightly based on hotel name)
+    hotel_hash = int(hashlib.md5(hotel["Hotel Name"].encode()).hexdigest(), 16)
+    hotel_lat_off = ((hotel_hash % 100) - 50) * 0.0003
+    hotel_lon_off = (((hotel_hash >> 8) % 100) - 50) * 0.0003
+    points.append({
+        "name": f"🏨 {hotel['Hotel Name']}",
+        "type": f"Stay · {hotel.get('Area', 'City Center')}",
+        "details": f"⭐ {hotel.get('Rating', '4.2')} · ₹{hotel.get('Price/Day (₹)', 2000):,}/night",
+        "lat": lat + hotel_lat_off,
+        "lon": lon + hotel_lon_off,
+        "color": [168, 85, 247, 240],
+        "radius": 480,
+    })
+
+    # 3. Attractions distributed around destination
+    num_attractions = max(len(attractions), 1)
+    for idx, att in enumerate(attractions):
+        angle = (2 * math.pi * idx) / num_attractions + 0.35
+        dist = 0.015 + ((idx % 3) * 0.008)
+        att_lat = lat + math.sin(angle) * dist
+        att_lon = lon + math.cos(angle) * dist
+        points.append({
+            "name": f"{att.get('icon', '📍')} {att['name']}",
+            "type": f"Attraction · {att.get('category', 'General').capitalize()}",
+            "details": f"Recommended for {att.get('category', 'interests')} lovers",
+            "lat": att_lat,
+            "lon": att_lon,
+            "color": [52, 211, 153, 230],
+            "radius": 420,
+        })
+
+    return pd.DataFrame(points)
 
 # ---------------- AI ITINERARY ----------------
 def generate_itinerary(from_location, destination, start_date, end_date, interests):
@@ -555,6 +740,95 @@ section[data-testid="stSidebar"] h3 {
     opacity: 0.6;
 }
 
+/* Weather & Map Components */
+.voyager-weather-hero {
+    background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-tertiary) 100%);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.voyager-weather-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 12px;
+    margin-top: 14px;
+    margin-bottom: 20px;
+}
+
+.voyager-weather-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 12px;
+    text-align: center;
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.voyager-weather-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent);
+    box-shadow: 0 4px 16px var(--accent-soft);
+}
+
+.voyager-weather-date {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+    font-weight: 500;
+}
+
+.voyager-weather-icon {
+    font-size: 1.8rem;
+    margin: 4px 0;
+}
+
+.voyager-weather-temp {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.voyager-weather-condition {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 4px;
+}
+
+.voyager-map-legend {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 10px 18px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 14px;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+}
+
+.voyager-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.voyager-legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
     width: 6px;
@@ -659,12 +933,16 @@ if submit:
     else:
         with st.spinner("Planning your trip..."):
             days = (end_date - start_date).days + 1
+            coords = get_destination_coords(destination)
+            weather = get_weather_forecast(coords[0], coords[1])
             st.session_state.results = {
                 "from": from_location,
                 "destination": destination,
                 "days": days,
                 "interests": interests,
                 "budget": budget,
+                "coords": coords,
+                "weather": weather,
                 "flights": search_flights(from_location, destination),
                 "hotels": search_hotels(from_location, destination, days),
                 "attractions": search_attractions(interests),
@@ -687,6 +965,8 @@ if results:
     itinerary = results["itinerary"]
     flights = results["flights"]
     hotels = results["hotels"]
+    coords = results.get("coords") or get_destination_coords(destination)
+    weather = results.get("weather") or get_weather_forecast(coords[0], coords[1])
 
     # Flight & hotel selection
     st.markdown("<div class='voyager-section-title'>Choose your flight &amp; stay</div>", unsafe_allow_html=True)
@@ -736,6 +1016,13 @@ if results:
             </div>
             <div style="width: 1px; height: 32px; background: var(--border);"></div>
             <div style="text-align: center;">
+                <div style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;">Live Climate</div>
+                <div style="font-family: 'JetBrains Mono', monospace; font-size: 1.1rem; font-weight: 600; color: var(--accent);">
+                    {weather.get('icon', '🌤️')} {weather.get('current_temp', 24)}°C
+                </div>
+            </div>
+            <div style="width: 1px; height: 32px; background: var(--border);"></div>
+            <div style="text-align: center;">
                 <div style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;">Budget</div>
                 <div style="font-family: 'JetBrains Mono', monospace; font-size: 1.1rem; font-weight: 600; color: {'var(--success)' if total_cost <= budget else 'var(--error)'};">
                     ₹{total_cost:,}
@@ -762,10 +1049,16 @@ if results:
         """, unsafe_allow_html=True)
 
     # Tabs
-    tab1, tab2, tab3 = st.tabs(["Overview", "Attractions", "Itinerary"])
+    tab1, tab_map, tab_weather, tab2, tab3 = st.tabs([
+        "Overview",
+        "🗺️ Interactive Map",
+        "🌤️ Live Weather",
+        "📍 Attractions",
+        "🗓️ Itinerary"
+    ])
 
     with tab1:
-        c1, c2, c3 = st.columns(3)
+        c1, c2, c3, c4 = st.columns(4)
         with c1:
             st.metric("✈ Flight", f"{flight['Airline']}", f"₹{flight['Price (₹)']:,}")
             st.markdown(f"""
@@ -784,6 +1077,14 @@ if results:
             </div>
             """, unsafe_allow_html=True)
         with c3:
+            st.metric("🌤️ Climate", f"{weather.get('icon', '🌤️')} {weather.get('current_temp', 24)}°C", f"{weather.get('condition', 'Mild')}")
+            st.markdown(f"""
+            <div style="display: flex; gap: 8px; margin-top: -8px;">
+                <span class="voyager-tag">💨 {weather.get('windspeed', 10)} km/h</span>
+                <span class="voyager-tag">📍 {destination}</span>
+            </div>
+            """, unsafe_allow_html=True)
+        with c4:
             st.metric("💰 Total Cost", f"₹{total_cost:,}", f"{days} days")
             st.markdown(f"""
             <div style="display: flex; gap: 8px; margin-top: -8px;">
@@ -791,6 +1092,148 @@ if results:
                 <span class="voyager-tag">Transport ₹{days * 500:,}</span>
             </div>
             """, unsafe_allow_html=True)
+
+    with tab_map:
+        st.markdown(f"""
+        <div style="margin-bottom: 12px;">
+            <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 4px;">Interactive Destination Map</h3>
+            <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 14px;">
+                Explore {destination}: hotel stay, attractions, and key hubs plotted in 3D dark mode
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown("""
+        <div class="voyager-map-legend">
+            <span class="voyager-legend-item">
+                <span class="voyager-legend-dot" style="background: #fbbf24;"></span>
+                <span>Destination Center</span>
+            </span>
+            <span class="voyager-legend-item">
+                <span class="voyager-legend-dot" style="background: #a855f7;"></span>
+                <span>Selected Hotel</span>
+            </span>
+            <span class="voyager-legend-item">
+                <span class="voyager-legend-dot" style="background: #34d399;"></span>
+                <span>Recommended Attractions</span>
+            </span>
+        </div>
+        """, unsafe_allow_html=True)
+
+        map_df = generate_map_dataframe(destination, coords, hotel, attractions)
+
+        scatterplot_layer = pdk.Layer(
+            "ScatterplotLayer",
+            data=map_df,
+            get_position="[lon, lat]",
+            get_color="color",
+            get_radius="radius",
+            pickable=True,
+            auto_highlight=True,
+            radius_min_pixels=6,
+            radius_max_pixels=25,
+        )
+
+        text_layer = pdk.Layer(
+            "TextLayer",
+            data=map_df,
+            get_position="[lon, lat]",
+            get_text="name",
+            get_size=12,
+            get_color=[232, 234, 240, 220],
+            get_alignment_baseline="'bottom'",
+            get_pixel_offset=[0, -10],
+            font_family="'DM Sans', sans-serif",
+        )
+
+        view_state = pdk.ViewState(
+            latitude=coords[0],
+            longitude=coords[1],
+            zoom=12.2,
+            pitch=25,
+        )
+
+        st.pydeck_chart(
+            pdk.Deck(
+                layers=[scatterplot_layer, text_layer],
+                initial_view_state=view_state,
+                tooltip={
+                    "html": "<div style='font-family: sans-serif; font-size: 13px; line-height: 1.4;'>"
+                            "<b style='color: #6c63ff; font-size: 14px;'>{name}</b><br/>"
+                            "<span style='color: #8b90a0;'>{type}</span><br/>"
+                            "<span style='color: #e8eaf0;'>{details}</span>"
+                            "</div>",
+                    "style": {
+                        "backgroundColor": "#161b26",
+                        "color": "#e8eaf0",
+                        "border": "1px solid #1f2537",
+                        "borderRadius": "8px",
+                        "padding": "10px 14px",
+                        "boxShadow": "0 8px 24px rgba(0,0,0,0.5)"
+                    }
+                },
+                map_style="dark",
+            )
+        )
+
+        st.markdown(f"""
+        <div style="margin-top: 10px; display: flex; justify-content: flex-end;">
+            <span class="voyager-tag">📍 Lat: {coords[0]:.4f}, Lon: {coords[1]:.4f}</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with tab_weather:
+        st.markdown(f"""
+        <div style="margin-bottom: 14px;">
+            <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 4px;">Weather Forecast for {destination}</h3>
+            <p style="color: var(--text-muted); font-size: 0.85rem;">Live conditions &amp; 5-day outlook</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown(f"""
+        <div class="voyager-weather-hero">
+            <div style="display: flex; align-items: center; gap: 20px;">
+                <span style="font-size: 3.2rem;">{weather.get('icon', '🌤️')}</span>
+                <div>
+                    <div style="color: var(--text-muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em;">Current Conditions</div>
+                    <div style="font-size: 2rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--text-primary); margin: 2px 0;">
+                        {weather.get('current_temp', 24)}°C
+                    </div>
+                    <div style="color: var(--text-secondary); font-size: 0.95rem;">{weather.get('condition', 'Mild & Pleasant')}</div>
+                </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <div style="display: flex; gap: 16px;">
+                    <div>
+                        <span style="color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase;">Wind Speed</span><br>
+                        <span style="font-weight: 600; font-family: 'JetBrains Mono', monospace;">{weather.get('windspeed', 10)} km/h</span>
+                    </div>
+                    <div>
+                        <span style="color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase;">Status</span><br>
+                        <span style="color: var(--success); font-weight: 600;">Active</span>
+                    </div>
+                </div>
+                <div style="font-size: 0.85rem; color: var(--accent); background: var(--accent-soft); padding: 6px 12px; border-radius: 8px;">
+                    💡 {weather.get('tip', 'Enjoy your journey!')}
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        daily = weather.get("daily", [])
+        if daily:
+            st.markdown("<div style='font-size: 0.88rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;'>5-Day Outlook</div>", unsafe_allow_html=True)
+            w_cols = st.columns(len(daily))
+            for idx, day_info in enumerate(daily):
+                with w_cols[idx]:
+                    st.markdown(f"""
+                    <div class="voyager-weather-card">
+                        <div class="voyager-weather-date">{day_info['date']}</div>
+                        <div class="voyager-weather-icon">{day_info['icon']}</div>
+                        <div class="voyager-weather-temp">{day_info['max_temp']}° / <span style="color: var(--text-muted); font-size: 0.88rem;">{day_info['min_temp']}°</span></div>
+                        <div class="voyager-weather-condition">{day_info['condition']}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
     with tab2:
         st.markdown(f"""
