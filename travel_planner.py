@@ -305,6 +305,115 @@ def generate_map_dataframe(destination, coords, hotel, attractions):
 
     return pd.DataFrame(points)
 
+# ---------------- PACKING CHECKLIST ----------------
+def generate_packing_list(destination, days, weather, interests):
+    current_temp = weather.get("current_temp", 24)
+    condition = str(weather.get("condition", "")).lower()
+    daily = weather.get("daily", [])
+
+    max_temps = [d.get("max_temp") for d in daily if isinstance(d.get("max_temp"), (int, float))]
+    min_temps = [d.get("min_temp") for d in daily if isinstance(d.get("min_temp"), (int, float))]
+    max_t = max(max_temps) if max_temps else current_temp
+    min_t = min(min_temps) if min_temps else current_temp
+    has_rain = (
+        any(d.get("rain_prob", 0) > 20 or "rain" in str(d.get("condition", "")).lower() for d in daily)
+        or "rain" in condition
+        or "drizzle" in condition
+    )
+
+    categories = {
+        "🪪 Documents & Money": [
+            "Government photo ID & booking confirmations",
+            "Emergency cash & primary payment cards",
+            "Boarding pass / ticket printouts or offline copies",
+            "Medical insurance card / emergency contact card",
+        ],
+        "👕 Clothing & Footwear": [
+            f"{max(days, 2)} daily breathable outfits",
+            "1 pair durable, broken-in walking shoes",
+            "Comfortable sleepwear & undergarments",
+            "Light extra layer for transit / air conditioning",
+        ],
+        "🌤️ Weather Essentials": [],
+        "🔌 Tech & Gear": [
+            "Smartphone charger & fast charging cable",
+            "High-capacity power bank (10,000+ mAh)",
+            "Noise-cancelling earbuds or headphones",
+        ],
+        "🧴 Toiletries & Health": [
+            "Travel-size dental kit (brush, paste, floss)",
+            "Moisturizer & lip balm",
+            "Personal prescription meds & pain reliever",
+            "Antiseptic wipes & hand sanitizer",
+        ],
+        "🎯 Interest-Specific": [],
+    }
+
+    # Weather-based logic
+    if max_t >= 26 or "clear" in condition or "sun" in condition:
+        categories["🌤️ Weather Essentials"].extend([
+            "UV protection sunglasses",
+            "Broad-spectrum sunscreen (SPF 50+)",
+            "Sun hat or cap",
+            "Light breathable cotton or linen clothing",
+        ])
+    if min_t <= 18:
+        categories["🌤️ Weather Essentials"].extend([
+            "Warm fleece, sweater, or compact jacket",
+            "Cozy socks for chilly mornings/evenings",
+        ])
+    if min_t <= 10:
+        categories["🌤️ Weather Essentials"].extend([
+            "Thermal innerwear & woolen beanie/scarf",
+        ])
+    if has_rain:
+        categories["🌤️ Weather Essentials"].extend([
+            "Compact travel umbrella",
+            "Lightweight rain poncho or waterproof jacket",
+            "Waterproof pouch for phone & cash",
+        ])
+    if not categories["🌤️ Weather Essentials"]:
+        categories["🌤️ Weather Essentials"].extend([
+            "Versatile all-weather light jacket",
+            "UV sunglasses & compact umbrella",
+        ])
+
+    # Interest-based additions
+    norm_interests = [i.lower() for i in interests]
+    if "adventure" in norm_interests:
+        categories["🎯 Interest-Specific"].extend([
+            "Grip-soled hiking/trekking shoes",
+            "Lightweight day backpack",
+            "Blister bandages & muscle relief spray",
+            "Bug spray / insect repellent",
+        ])
+    if "nature" in norm_interests:
+        categories["🎯 Interest-Specific"].extend([
+            "Compact binoculars or zoom camera",
+            "Reusable insulated water bottle",
+            "Eco-friendly insect repellent lotion",
+        ])
+    if "food" in norm_interests:
+        categories["🎯 Interest-Specific"].extend([
+            "Digestive tablets & antacids",
+            "Pocket pack of wet wipes & sanitizing gel",
+            "Reusable food box / silicone bag for street treats",
+        ])
+    if "history" in norm_interests:
+        categories["🎯 Interest-Specific"].extend([
+            "Modest clothing for religious & heritage monuments",
+            "Slip-on shoes for temple entry/exit ease",
+            "Small notebook or travel journal",
+        ])
+
+    if not categories["🎯 Interest-Specific"]:
+        categories["🎯 Interest-Specific"].extend([
+            "Foldable tote bag for market shopping & souvenirs",
+            "Compact reusable water bottle",
+        ])
+
+    return categories
+
 # ---------------- AI ITINERARY ----------------
 def generate_itinerary(from_location, destination, start_date, end_date, interests):
     if not client:
@@ -829,6 +938,38 @@ section[data-testid="stSidebar"] h3 {
     display: inline-block;
 }
 
+/* Packing Checklist Components */
+.voyager-checklist-progress {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 22px;
+    margin-bottom: 22px;
+}
+
+.voyager-category-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 16px;
+    transition: border-color 0.2s ease;
+}
+
+.voyager-category-card:hover {
+    border-color: rgba(108, 99, 255, 0.4);
+}
+
+.voyager-category-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
     width: 6px;
@@ -1049,10 +1190,11 @@ if results:
         """, unsafe_allow_html=True)
 
     # Tabs
-    tab1, tab_map, tab_weather, tab2, tab3 = st.tabs([
+    tab1, tab_map, tab_weather, tab_packing, tab2, tab3 = st.tabs([
         "Overview",
         "🗺️ Interactive Map",
         "🌤️ Live Weather",
+        "🧳 Smart Packing",
         "📍 Attractions",
         "🗓️ Itinerary"
     ])
@@ -1234,6 +1376,66 @@ if results:
                         <div class="voyager-weather-condition">{day_info['condition']}</div>
                     </div>
                     """, unsafe_allow_html=True)
+
+    with tab_packing:
+        st.markdown(f"""
+        <div style="margin-bottom: 14px;">
+            <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 4px;">Smart Packing Checklist</h3>
+            <p style="color: var(--text-muted); font-size: 0.85rem;">Customized for {destination} ({days} days · {weather.get('current_temp', 24)}°C · {weather.get('condition', 'Mild')})</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        packing_categories = generate_packing_list(destination, days, weather, interests)
+
+        # Build list of all item keys for persistent tracking
+        all_item_keys = []
+        for cat, items in packing_categories.items():
+            for itm in items:
+                all_item_keys.append(f"pack_{destination}_{cat}_{itm}")
+
+        total_items = max(len(all_item_keys), 1)
+        packed_count = sum(1 for k in all_item_keys if st.session_state.get(k, False))
+        pct_packed = int((packed_count / total_items) * 100)
+
+        p_col1, p_col2 = st.columns([3, 1])
+        with p_col1:
+            st.markdown(f"""
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                <span style="color: var(--text-secondary); font-size: 0.85rem; font-weight: 500;">
+                    Packed {packed_count} of {total_items} essentials
+                </span>
+                <span style="color: {'var(--success)' if pct_packed == 100 else 'var(--accent)'}; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; font-weight: 600;">
+                    {pct_packed}% Complete
+                </span>
+            </div>
+            <div class="voyager-cost-bar" style="height: 6px; margin-bottom: 18px;">
+                <div class="voyager-cost-fill" style="width: {pct_packed}%; background: {'var(--success)' if pct_packed == 100 else 'var(--accent)'};"></div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with p_col2:
+            if st.button("Reset Checklist", use_container_width=True):
+                for k in all_item_keys:
+                    st.session_state[k] = False
+                st.rerun()
+
+        # Render categories in clean 2-column cards
+        cat_names = list(packing_categories.keys())
+        left_col, right_col = st.columns(2)
+        for idx, cat in enumerate(cat_names):
+            target_col = left_col if idx % 2 == 0 else right_col
+            items = packing_categories[cat]
+            if items:
+                with target_col:
+                    st.markdown(f"""
+                    <div class="voyager-category-title">
+                        <span>{cat}</span>
+                        <span class="voyager-tag" style="margin-left: auto; font-size: 0.72rem;">{len(items)} items</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    for itm in items:
+                        item_key = f"pack_{destination}_{cat}_{itm}"
+                        st.checkbox(itm, key=item_key)
 
     with tab2:
         st.markdown(f"""
