@@ -89,6 +89,17 @@ The redesign transforms the default Streamlit travel planner into **Voyager** â€
 - Color-coded pins: Gold (Destination Center), Purple/Accent (Chosen Hotel), Emerald (Recommended Attractions)
 - Map legend bar with colored dots and clear labeling
 
+### Smart Packing Checklist
+- 2-column responsive layout with categorized cards (Documents, Clothing, Weather Gear, Tech, Toiletries, Interests)
+- Live completion status banner with dynamic progress bar and completion percentage
+- One-click reset functionality
+
+### Local Phrases & Cultural Guide
+- Language banner with primary tongue, script badge, and customary greeting
+- Multi-column phrase cards with English prompt, local script in bold, phonetic pronunciation, and category badge
+- Etiquette & customs container with clear bullet points
+- Emergency contacts strip with highlighted helpline numbers
+
 ### Empty State
 - Centered layout with dashed border
 - Large icon + descriptive text
@@ -101,6 +112,7 @@ The redesign transforms the default Streamlit travel planner into **Voyager** â€
 | Buttons | background-color, box-shadow, transform | 200ms ease |
 | Metric cards | border-color, box-shadow | 200ms ease |
 | Weather cards | transform translateY(-2px), border-color, box-shadow | 200ms ease |
+| Phrase cards | transform translateY(-2px), border-color | 200ms ease |
 | Tabs | background-color, color | 200ms ease |
 | Attraction items | border-color, background | 200ms ease |
 | Text inputs | border-color, box-shadow | 200ms ease |
@@ -112,7 +124,7 @@ The redesign transforms the default Streamlit travel planner into **Voyager** â€
 - Max-width container: 1200px
 - Sidebar: dedicated form area with vertical spacing
 - Main content: full-width with consistent padding
-- Tabs: horizontal, evenly distributed (Overview, Map, Weather, Attractions, Itinerary)
+- Tabs: horizontal, evenly distributed (Overview, Map, Weather, Packing, Phrases, Attractions, Itinerary)
 - Metric grid: 4-column equal-width (Flight, Hotel, Climate, Total Cost)
 - Action buttons: 3-column equal-width
 

@@ -22,6 +22,8 @@ An AI-powered travel planner built with **Streamlit** and **Groq** (`llama-3.3-7
 - **AI itinerary generation** — detailed, day-by-day plans tailored to your interests.
 - **Interactive 3D Dark Map** — visualizes city center, selected hotel, and attraction pins using Pydeck with interactive hover cards.
 - **Live Weather Forecast** — real-time climate conditions, wind speed, and a 5-day forecast with travel tips powered by Open-Meteo.
+- **Smart AI Packing Checklist** — dynamic checklist tailored to destination weather, duration, and interests with live completion progress tracking and reset.
+- **Local Phrases & Cultural Guide** — destination-aware language greetings, essential phrases with pronunciation, etiquette tips, and emergency contacts.
 - **Compare & choose** — pick from multiple flight and hotel options; costs recalculate instantly.
 - **Stable results** — search results are deterministic per route (seeded), so they don't shuffle on every interaction.
 - **Budget tracking** — automatic cost breakdown (flight, hotel, food, transport) with a color-coded progress bar.
@@ -116,6 +118,8 @@ An AI-powered travel planner built with **Streamlit** and **Groq** (`llama-3.3-7
 
 - [x] Map view of attractions & hotel stays (Pydeck)
 - [x] Live destination weather forecasts & advisory (Open-Meteo)
+- [x] Smart AI packing checklist with weather & duration adaptation
+- [x] Local language phrases, customs & emergency helplines
 - [ ] Real flight & hotel data via a travel API
 - [ ] Multi-currency support
 - [ ] Save and reload multiple trips

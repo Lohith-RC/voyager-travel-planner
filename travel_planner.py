@@ -414,6 +414,178 @@ def generate_packing_list(destination, days, weather, interests):
 
     return categories
 
+# ---------------- LANGUAGE & CULTURAL GUIDE ----------------
+LANGUAGE_PROFILES = {
+    "hindi": {
+        "language": "Hindi (हिंदी)",
+        "greeting": "Namaste (नमस्ते)",
+        "script": "देवनागरी",
+        "phrases": [
+            {"english": "Hello / Greetings", "local": "नमस्ते", "pronunciation": "Namaste", "category": "General"},
+            {"english": "Thank you", "local": "धन्यवाद / शुक्रिया", "pronunciation": "Dhanyavaad / Shukriya", "category": "General"},
+            {"english": "Please", "local": "कृपया", "pronunciation": "Kripya", "category": "General"},
+            {"english": "How much is this?", "local": "यह कितने का है?", "pronunciation": "Yeh kitne ka hai?", "category": "Shopping"},
+            {"english": "Where is the station / market?", "local": "स्टेशन / बाज़ार कहाँ है?", "pronunciation": "Station / Bazaar kahan hai?", "category": "Directions"},
+            {"english": "Is this vegetarian?", "local": "क्या यह शाकाहारी है?", "pronunciation": "Kya yeh shakahari hai?", "category": "Dining"},
+            {"english": "The bill / check please", "local": "बिल दे दीजिए", "pronunciation": "Bill de dijiye", "category": "Dining"},
+            {"english": "Please help me", "local": "कृपया मदद कीजिए", "pronunciation": "Kripya madad kijiye", "category": "Emergency"},
+        ],
+        "etiquette": [
+            "👟 Remove footwear before entering temples, shrines, and local households.",
+            "🙏 Greet locals with folded hands and a warm 'Namaste'.",
+            "💵 Respectful bargaining is customary in traditional street bazaars; start ~30% below quote.",
+            "🍽️ Use your right hand when accepting food, Prasad, or handing payment.",
+            "💳 Tipping around 7-10% is customary at sit-down diners and cafes.",
+        ],
+        "emergency": [
+            {"service": "National Emergency Number", "number": "112"},
+            {"service": "Police Helpline", "number": "100"},
+            {"service": "Medical Ambulance", "number": "108"},
+            {"service": "Tourist Helpline (24x7)", "number": "1363"},
+        ],
+    },
+    "marathi": {
+        "language": "Marathi (मराठी) & Hindi",
+        "greeting": "Namaskar (नमस्कार)",
+        "script": "देवनागरी",
+        "phrases": [
+            {"english": "Hello", "local": "नमस्कार", "pronunciation": "Namaskar", "category": "General"},
+            {"english": "Thank you", "local": "धन्यवाद / आभार", "pronunciation": "Dhanyavaad", "category": "General"},
+            {"english": "How much is this?", "local": "हे कितीला आहे?", "pronunciation": "He kitila aahe?", "category": "Shopping"},
+            {"english": "Where is the station?", "local": "स्थानक कुठे आहे?", "pronunciation": "Sthanak kuthe aahe?", "category": "Directions"},
+            {"english": "Very delicious", "local": "खूप छान आहे", "pronunciation": "Khoop chaan aahe", "category": "Dining"},
+            {"english": "Please help me", "local": "कृपया मला मदत करा", "pronunciation": "Krupaya madat kara", "category": "Emergency"},
+        ],
+        "etiquette": [
+            "🚆 Suburban local trains are Mumbai's lifeline; keep backpack in front during peak hours.",
+            "👟 Remove footwear before entering temples and prayer rooms.",
+            "🚕 City black-and-yellow taxis and auto-rickshaws strictly use electronic meters.",
+            "💵 5-10% tipping is customary at sit-down eateries.",
+        ],
+        "emergency": [
+            {"service": "National Emergency", "number": "112"},
+            {"service": "Police Helpline", "number": "100"},
+            {"service": "Medical Ambulance", "number": "108"},
+            {"service": "Tourist Helpline", "number": "1363"},
+        ],
+    },
+    "kannada": {
+        "language": "Kannada (ಕನ್ನಡ) & English",
+        "greeting": "Namaskara (ನಮಸ್ಕಾರ)",
+        "script": "ಕನ್ನಡ ಲಿಪಿ",
+        "phrases": [
+            {"english": "Hello", "local": "ನಮಸ್ಕಾರ", "pronunciation": "Namaskara", "category": "General"},
+            {"english": "Thank you", "local": "ಧನ್ಯವಾದಗಳು", "pronunciation": "Dhanyavaadagalu", "category": "General"},
+            {"english": "How much is this?", "local": "ಇದು ಎಷ್ಟು?", "pronunciation": "Idu eshtu?", "category": "Shopping"},
+            {"english": "Where is this place?", "local": "ಈ ಜಾಗ ಎಲ್ಲಿದೆ?", "pronunciation": "Ee jaaga ellide?", "category": "Directions"},
+            {"english": "Food is very tasty", "local": "ತಿಂಡಿ ತುಂಬಾ ಚೆನ್ನಾಗಿದೆ", "pronunciation": "Tindi tumba chennagide", "category": "Dining"},
+            {"english": "Please help", "local": "ದಯವಿಟ್ಟು ಸಹಾಯ ಮಾಡಿ", "pronunciation": "Dayavittu sahaya maadi", "category": "Emergency"},
+        ],
+        "etiquette": [
+            "☕ Filter coffee and darshini breakfast counters are iconic; order and stand by the counters.",
+            "🗣️ English and Hindi are widely understood alongside Kannada across commercial areas.",
+            "👟 Leave shoes outside places of worship.",
+            "🚕 Ride-hailing apps (Uber, Ola, Namma Yatri) are most convenient for city commute.",
+        ],
+        "emergency": [
+            {"service": "National Emergency", "number": "112"},
+            {"service": "Police", "number": "100"},
+            {"service": "Ambulance", "number": "108"},
+            {"service": "Tourist Helpline", "number": "1363"},
+        ],
+    },
+    "french": {
+        "language": "French (Français)",
+        "greeting": "Bonjour",
+        "script": "Latin",
+        "phrases": [
+            {"english": "Hello / Good day", "local": "Bonjour", "pronunciation": "Bohn-zhoor", "category": "General"},
+            {"english": "Thank you very much", "local": "Merci beaucoup", "pronunciation": "Mair-see boh-koo", "category": "General"},
+            {"english": "Please", "local": "S'il vous plaît", "pronunciation": "Seel voo play", "category": "General"},
+            {"english": "How much is this?", "local": "Combien ça coûte ?", "pronunciation": "Kom-byen sah koot?", "category": "Shopping"},
+            {"english": "Where is the metro?", "local": "Où est le métro ?", "pronunciation": "Oo ay luh may-tro?", "category": "Directions"},
+            {"english": "The bill, please", "local": "L'addition, s'il vous plaît", "pronunciation": "Lah-dee-syon seel voo play", "category": "Dining"},
+            {"english": "Help!", "local": "Au secours !", "pronunciation": "Oh seh-koor!", "category": "Emergency"},
+        ],
+        "etiquette": [
+            "🥐 Always greet shopkeepers and waitstaff with 'Bonjour' upon entering.",
+            "🍷 A 15% service fee is already included in restaurant checks by French law.",
+            "🚇 Stand on the right side of escalators in the Metro so commuters can walk on the left.",
+            "👗 Smart casual attire is appreciated when dining in evening bistros.",
+        ],
+        "emergency": [
+            {"service": "European Emergency", "number": "112"},
+            {"service": "Medical SAMU", "number": "15"},
+            {"service": "Police", "number": "17"},
+            {"service": "Fire Rescue", "number": "18"},
+        ],
+    },
+    "japanese": {
+        "language": "Japanese (日本語)",
+        "greeting": "Konnichiwa (こんにちは)",
+        "script": "漢字 / かな",
+        "phrases": [
+            {"english": "Hello", "local": "こんにちは", "pronunciation": "Konnichiwa", "category": "General"},
+            {"english": "Thank you very much", "local": "ありがとうございます", "pronunciation": "Arigatō gozaimasu", "category": "General"},
+            {"english": "Excuse me / Sorry", "local": "すみません", "pronunciation": "Sumimasen", "category": "General"},
+            {"english": "How much is this?", "local": "これはいくらですか？", "pronunciation": "Kore wa ikura desu ka?", "category": "Shopping"},
+            {"english": "Where is the station?", "local": "駅はどこですか？", "pronunciation": "Eki wa doko desu ka?", "category": "Directions"},
+            {"english": "Delicious!", "local": "おいしいです！", "pronunciation": "Oishii desu!", "category": "Dining"},
+            {"english": "Check please", "local": "お会計をお願いします", "pronunciation": "O-kaikei o onegaishimasu", "category": "Dining"},
+            {"english": "Please help me", "local": "助けてください", "pronunciation": "Tasukete kudasai", "category": "Emergency"},
+        ],
+        "etiquette": [
+            "🚫 Tipping is not customary in Japan and can cause confusion or embarrassment.",
+            "👟 Always remove your shoes when stepping onto tatami mats, shrines, and ryokans.",
+            "🤫 Avoid loud conversations or phone calls on bullet trains and public transport.",
+            "🍜 Slurping ramen noodles is welcomed and viewed as a compliment to the chef!",
+        ],
+        "emergency": [
+            {"service": "Police", "number": "110"},
+            {"service": "Ambulance & Fire", "number": "119"},
+            {"service": "Japan Tourist Hotline", "number": "050-3816-2720"},
+        ],
+    },
+    "general": {
+        "language": "Global Travel English & Local Courtesy",
+        "greeting": "Hello / Good Day",
+        "script": "International",
+        "phrases": [
+            {"english": "Hello / Good day", "local": "Hello / Good Day", "pronunciation": "Hel-lo", "category": "General"},
+            {"english": "Thank you very much", "local": "Thank you very much", "pronunciation": "Thank you", "category": "General"},
+            {"english": "Could you please help me?", "local": "Could you please help me?", "pronunciation": "Help please", "category": "General"},
+            {"english": "How much does this cost?", "local": "How much is this?", "pronunciation": "Price check", "category": "Shopping"},
+            {"english": "Where is the main station?", "local": "Where is the station?", "pronunciation": "Station directions", "category": "Directions"},
+            {"english": "Check / Bill please", "local": "The bill, please", "pronunciation": "Bill please", "category": "Dining"},
+            {"english": "Emergency / Police", "local": "I need urgent assistance", "pronunciation": "Help", "category": "Emergency"},
+        ],
+        "etiquette": [
+            "🧭 Keep offline maps downloaded on your smartphone for low connectivity spots.",
+            "💳 Carry a mix of local cash and a foreign transaction-free card.",
+            "🤝 Respect local dress codes at cultural landmarks and places of worship.",
+            "📸 Always ask before photographing individuals, vendors, or sacred rituals.",
+        ],
+        "emergency": [
+            {"service": "International Emergency", "number": "112 / 911"},
+            {"service": "Local Police & Assistance", "number": "Inquire at Hotel Desk"},
+        ],
+    },
+}
+
+def get_destination_language_guide(destination):
+    dest = destination.strip().lower()
+    if any(k in dest for k in ["mumbai", "pune", "nagpur", "nashik"]):
+        return LANGUAGE_PROFILES["marathi"]
+    if any(k in dest for k in ["bangalore", "bengaluru", "mysore", "mysuru", "hampi", "coorg"]):
+        return LANGUAGE_PROFILES["kannada"]
+    if any(k in dest for k in ["paris", "nice", "lyon", "marseille", "france"]):
+        return LANGUAGE_PROFILES["french"]
+    if any(k in dest for k in ["tokyo", "kyoto", "osaka", "japan"]):
+        return LANGUAGE_PROFILES["japanese"]
+    if any(k in dest for k in ["jaipur", "delhi", "agra", "varanasi", "udaipur", "goa", "india", "lucknow", "jodhpur", "manali", "shimla"]):
+        return LANGUAGE_PROFILES["hindi"]
+    return LANGUAGE_PROFILES["general"]
+
 # ---------------- AI ITINERARY ----------------
 def generate_itinerary(from_location, destination, start_date, end_date, interests):
     if not client:
@@ -970,6 +1142,66 @@ section[data-testid="stSidebar"] h3 {
     gap: 8px;
 }
 
+/* Language & Etiquette Guide */
+.voyager-phrase-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+    margin-bottom: 20px;
+}
+
+.voyager-phrase-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.voyager-phrase-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent);
+}
+
+.voyager-phrase-english {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.voyager-phrase-local {
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+
+.voyager-phrase-phonetic {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.85rem;
+    color: var(--accent);
+    font-style: italic;
+}
+
+.voyager-etiquette-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 16px;
+}
+
+.voyager-emergency-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    background: var(--bg-tertiary);
+    border-radius: 8px;
+    margin-bottom: 8px;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
     width: 6px;
@@ -1190,11 +1422,12 @@ if results:
         """, unsafe_allow_html=True)
 
     # Tabs
-    tab1, tab_map, tab_weather, tab_packing, tab2, tab3 = st.tabs([
+    tab1, tab_map, tab_weather, tab_packing, tab_phrases, tab2, tab3 = st.tabs([
         "Overview",
         "🗺️ Interactive Map",
         "🌤️ Live Weather",
         "🧳 Smart Packing",
+        "🗣️ Local Phrases",
         "📍 Attractions",
         "🗓️ Itinerary"
     ])
@@ -1436,6 +1669,63 @@ if results:
                     for itm in items:
                         item_key = f"pack_{destination}_{cat}_{itm}"
                         st.checkbox(itm, key=item_key)
+
+    with tab_phrases:
+        guide = get_destination_language_guide(destination)
+        st.markdown(f"""
+        <div style="margin-bottom: 14px;">
+            <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 4px;">Local Phrases &amp; Cultural Guide</h3>
+            <p style="color: var(--text-muted); font-size: 0.85rem;">Essential communications &amp; customs for traveling in {destination}</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown(f"""
+        <div class="voyager-weather-hero">
+            <div style="display: flex; align-items: center; gap: 18px;">
+                <span style="font-size: 2.4rem;">🗣️</span>
+                <div>
+                    <div style="color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em;">Spoken Language</div>
+                    <div style="font-size: 1.35rem; font-weight: 700; color: var(--text-primary); margin: 2px 0;">{guide['language']}</div>
+                    <div style="color: var(--accent); font-size: 0.85rem; font-weight: 500;">Common Greeting: {guide['greeting']}</div>
+                </div>
+            </div>
+            <div>
+                <span class="voyager-tag" style="font-size: 0.78rem;">Script: {guide.get('script', 'Local')}</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        col_left, col_right = st.columns([1.6, 1.2])
+
+        with col_left:
+            st.markdown("<div style='font-size: 0.95rem; font-weight: 600; margin-bottom: 10px;'>💬 Handy Travel Phrases</div>", unsafe_allow_html=True)
+            for phrase in guide["phrases"]:
+                st.markdown(f"""
+                <div class="voyager-phrase-card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                        <span class="voyager-phrase-english">{phrase['english']}</span>
+                        <span class="voyager-tag" style="font-size: 0.7rem; padding: 2px 8px;">{phrase['category']}</span>
+                    </div>
+                    <div class="voyager-phrase-local">{phrase['local']}</div>
+                    <div class="voyager-phrase-phonetic">Pronounce: "{phrase['pronunciation']}"</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+        with col_right:
+            st.markdown("<div style='font-size: 0.95rem; font-weight: 600; margin-bottom: 10px;'>🧭 Local Etiquette &amp; Customs</div>", unsafe_allow_html=True)
+            st.markdown("""<div class="voyager-etiquette-card">""", unsafe_allow_html=True)
+            for rule in guide["etiquette"]:
+                st.markdown(f"<div style='font-size: 0.86rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 10px;'>{rule}</div>", unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+
+            st.markdown("<div style='font-size: 0.95rem; font-weight: 600; margin-top: 18px; margin-bottom: 10px;'>🚨 Emergency Contacts</div>", unsafe_allow_html=True)
+            for emer in guide["emergency"]:
+                st.markdown(f"""
+                <div class="voyager-emergency-item">
+                    <span style="font-size: 0.85rem; color: var(--text-secondary);">{emer['service']}</span>
+                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; font-weight: 600; color: var(--error);">{emer['number']}</span>
+                </div>
+                """, unsafe_allow_html=True)
 
     with tab2:
         st.markdown(f"""
