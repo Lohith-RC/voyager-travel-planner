@@ -33,6 +33,32 @@ client = None
 if groq_api_key:
     client = Groq(api_key=groq_api_key)
 
+# ---------------- SECURITY HELPERS ----------------
+MAX_LOCATION_LEN = 80
+
+
+def clean_location(value):
+    """Sanitize free-text input: drop control chars, allow only safe name
+    characters, trim, and cap length. Prevents markup injection in any
+    downstream HTML/rendering context."""
+    if not value:
+        return ""
+    value = re.sub(r"[\x00-\x1f\x7f]", "", str(value))
+    value = re.sub(r"[^\w\s.,'()/\-]", "", value)
+    return value.strip()[:MAX_LOCATION_LEN]
+
+
+def h(value):
+    """HTML-escape untrusted values before interpolating into raw HTML blocks."""
+    return escape(str(value), {'"': "&quot;", "'": "&#x27;"})
+
+
+def safe_filename(value, fallback="trip"):
+    """Build a filesystem-safe filename fragment from user input."""
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", str(value or "")).strip("._-")
+    return cleaned[:60] or fallback
+
+
 MEMORY_FILE = "travel_memory.json"
 
 # ---------------- MEMORY ----------------
@@ -1255,9 +1281,9 @@ if memory:
         <span style="font-size: 1.2rem;">📍</span>
         <div>
             <span style="color: var(--text-secondary); font-size: 0.85rem;">Last trip planned</span><br>
-            <span style="color: var(--text-primary); font-weight: 500;">{memory.get('last_from', '—')} → {dest}</span>
+            <span style="color: var(--text-primary); font-weight: 500;">{h(memory.get('last_from', '—'))} → {h(dest)}</span>
             <span style="color: var(--text-muted); font-size: 0.8rem; margin-left: 8px;">
-                {' · '.join(memory.get('last_interests', []))}
+                {h(' · '.join(memory.get('last_interests', [])))}
             </span>
         </div>
     </div>
@@ -1271,9 +1297,11 @@ with st.sidebar:
         <p style="color: var(--text-muted); font-size: 0.82rem; margin: 0;">Fill in your travel details</p>
     </div>
     """, unsafe_allow_html=True)
+    if not client:
+        st.warning("GROQ_API_KEY not set. AI chatbot will use fallback responses.", icon="⚠️")
 
-    from_location = st.text_input("From", placeholder="e.g. Mumbai")
-    destination = st.text_input("Destination", placeholder="e.g. Jaipur")
+    from_location = clean_location(st.text_input("From", placeholder="e.g. Mumbai"))
+    destination = clean_location(st.text_input("Destination", placeholder="e.g. Jaipur"))
 
     col1, col2 = st.columns(2)
     with col1:
@@ -1377,9 +1405,9 @@ if results:
         <div>
             <div style="color: var(--text-muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;">Trip Route</div>
             <div style="font-size: 1.5rem; font-weight: 700; letter-spacing: -0.01em;">
-                {from_location}
+                {h(from_location)}
                 <span style="color: var(--accent); margin: 0 10px;">→</span>
-                {destination}
+                {h(destination)}
             </div>
         </div>
         <div style="display: flex; gap: 24px; align-items: center;">
@@ -1456,7 +1484,7 @@ if results:
             st.markdown(f"""
             <div style="display: flex; gap: 8px; margin-top: -8px;">
                 <span class="voyager-tag">💨 {weather.get('windspeed', 10)} km/h</span>
-                <span class="voyager-tag">📍 {destination}</span>
+                <span class="voyager-tag">📍 {h(destination)}</span>
             </div>
             """, unsafe_allow_html=True)
         with c4:
@@ -1473,7 +1501,7 @@ if results:
         <div style="margin-bottom: 12px;">
             <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 4px;">Interactive Destination Map</h3>
             <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 14px;">
-                Explore {destination}: hotel stay, attractions, and key hubs plotted in 3D dark mode
+                Explore {h(destination)}: hotel stay, attractions, and key hubs plotted in 3D dark mode
             </p>
         </div>
         """, unsafe_allow_html=True)
@@ -1560,7 +1588,7 @@ if results:
     with tab_weather:
         st.markdown(f"""
         <div style="margin-bottom: 14px;">
-            <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 4px;">Weather Forecast for {destination}</h3>
+            <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 4px;">Weather Forecast for {h(destination)}</h3>
             <p style="color: var(--text-muted); font-size: 0.85rem;">Live conditions &amp; 5-day outlook</p>
         </div>
         """, unsafe_allow_html=True)
@@ -1614,7 +1642,7 @@ if results:
         st.markdown(f"""
         <div style="margin-bottom: 14px;">
             <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 4px;">Smart Packing Checklist</h3>
-            <p style="color: var(--text-muted); font-size: 0.85rem;">Customized for {destination} ({days} days · {weather.get('current_temp', 24)}°C · {weather.get('condition', 'Mild')})</p>
+            <p style="color: var(--text-muted); font-size: 0.85rem;">Customized for {h(destination)} ({days} days · {weather.get('current_temp', 24)}°C · {weather.get('condition', 'Mild')})</p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -1675,7 +1703,7 @@ if results:
         st.markdown(f"""
         <div style="margin-bottom: 14px;">
             <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 4px;">Local Phrases &amp; Cultural Guide</h3>
-            <p style="color: var(--text-muted); font-size: 0.85rem;">Essential communications &amp; customs for traveling in {destination}</p>
+            <p style="color: var(--text-muted); font-size: 0.85rem;">Essential communications &amp; customs for traveling in {h(destination)}</p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -1750,7 +1778,7 @@ if results:
         st.markdown(f"""
         <div style="margin-bottom: 16px;">
             <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 4px;">Your itinerary</h3>
-            <p style="color: var(--text-muted); font-size: 0.85rem;">Day-by-day plan for {destination}</p>
+            <p style="color: var(--text-muted); font-size: 0.85rem;">Day-by-day plan for {h(destination)}</p>
         </div>
         """, unsafe_allow_html=True)
         st.markdown(itinerary)
@@ -1759,7 +1787,7 @@ if results:
     st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
 
     pdf = create_pdf(from_location, destination, total_cost, itinerary, flight, hotel, days)
-    msg = f"Trip: {from_location} -> {destination} | {days} days | ₹{total_cost:,}"
+    msg = f"Trip: {h(from_location)} -> {h(destination)} | {days} days | ₹{total_cost:,}"
     share_url = f"https://wa.me/?text={quote(msg)}"
 
     b1, b2, b3 = st.columns(3)
@@ -1787,7 +1815,7 @@ if results:
         st.download_button(
             "⬇ Download PDF",
             data=pdf,
-            file_name=f"voyager_trip_{destination}.pdf",
+            file_name=f"voyager_trip_{safe_filename(destination)}.pdf",
             mime="application/pdf",
             use_container_width=True
         )
@@ -1816,7 +1844,7 @@ if st.session_state.get("chat_destination"):
     ">
         <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 4px;">
             <span style="font-size: 1.3rem;">💬</span>
-            <h3 style="font-size: 1.1rem; font-weight: 600; margin: 0;">Ask about {chat_dest}</h3>
+            <h3 style="font-size: 1.1rem; font-weight: 600; margin: 0;">Ask about {h(chat_dest)}</h3>
         </div>
         <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0; padding-left: 40px;">
             Local food, hidden gems, cultural tips — ask anything
@@ -1855,7 +1883,7 @@ if st.session_state.get("chat_destination"):
                 )
                 reply = response.choices[0].message.content
             except Exception as e:
-                reply = f"Something went wrong — {str(e)}"
+                reply = "Sorry, something went wrong while generating a response. Please try again."
         else:
             reply = f"Here are some highlights of {chat_dest}: Local Museum, City Park, Heritage Fort, Food Street, and Botanical Garden. For real-time answers, please configure the Groq API key."
 

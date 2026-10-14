@@ -1,5 +1,7 @@
 venv/
 .env
+.env.*
+!.env.example
 travel_memory.json
 __pycache__/
 *.pyc
